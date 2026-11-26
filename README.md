@@ -1,2 +1,47 @@
-# dearth-social
-DearthSocial - an account-based social networking service
+# DearthSocial
+
+DearthSocialのアカウント登録・ログイン・ログアウト・パスワード変更・アカウント完全削除機能です。
+
+## 必要環境
+
+- Node.js 20以上
+- npm
+
+## 起動方法
+
+```bash
+npm install
+npm start
+```
+
+ブラウザで <http://localhost:3000> を開いてください。
+
+開発中の自動再起動:
+
+```bash
+npm run dev
+```
+
+## 機能
+
+- アカウント作成（アカウント名、アカウントID、パスワード）
+- アカウントIDの重複チェック（アカウント名は重複可能）
+- ログイン・ログアウト
+- パスワード変更（現在のパスワードを確認後、既存セッションを無効化）
+- アカウント完全削除（パスワード再確認後、ユーザーデータとセッションを削除）
+
+## セキュリティ
+
+- bcryptによるパスワードハッシュ化
+- HTTPOnly・SameSite Cookieセッション
+- セッションごとのCSRFトークン
+- 入力バリデーション
+- 書き込み操作への簡易レート制限
+
+本番環境では `SESSION_SECRET` を固定した十分に長いランダム値に設定し、HTTPSを有効にしてください。
+
+```bash
+SESSION_SECRET='長いランダム文字列' NODE_ENV=production npm start
+```
+
+アカウント情報は実行ディレクトリの `data.sqlite` に保存されます。データベースファイルはリポジトリにコミットしないでください。

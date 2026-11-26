@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="DearthSocial">
+  <title>DearthSocial</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="brand">
+      <span class="brand-mark" aria-hidden="true">D</span>
+      <h1>DearthSocial</h1>
+    </header>
+
+    <section id="guestView" class="card" hidden>
+      <div class="tabs" role="tablist" aria-label="アカウント操作">
+        <button id="registerTab" class="tab active" type="button" role="tab">アカウント作成</button>
+        <button id="loginTab" class="tab" type="button" role="tab">ログイン</button>
+      </div>
+
+      <form id="registerForm" class="form-panel">
+        <h2>アカウントを作成</h2>
+        <label>アカウント名
+          <input name="accountName" maxlength="50" autocomplete="nickname" required>
+        </label>
+        <label>アカウントID
+          <input name="accountId" maxlength="30" pattern="[A-Za-z0-9_-]{3,30}" autocomplete="username" required>
+          <small>英数字・_・-、3～30文字（重複不可）</small>
+        </label>
+        <label>パスワード
+          <input name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+        </label>
+        <button class="primary" type="submit">作成する</button>
+      </form>
+
+      <form id="loginForm" class="form-panel" hidden>
+        <h2>ログイン</h2>
+        <label>アカウントID
+          <input name="accountId" autocomplete="username" required>
+        </label>
+        <label>パスワード
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="primary" type="submit">ログイン</button>
+      </form>
+    </section>
+
+    <section id="accountView" class="card" hidden>
+      <div class="profile">
+        <div class="avatar" id="avatar">D</div>
+        <div>
+          <p class="eyebrow">ログイン中</p>
+          <h2 id="accountName"></h2>
+          <p id="accountId" class="muted"></p>
+        </div>
+      </div>
+
+      <div class="action-grid">
+        <details>
+          <summary>パスワードを変更</summary>
+          <form id="passwordForm" class="form-panel">
+            <label>現在のパスワード
+              <input name="currentPassword" type="password" autocomplete="current-password" required>
+            </label>
+            <label>新しいパスワード
+              <input name="newPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+            </label>
+            <label>新しいパスワード（確認）
+              <input name="confirmPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+            </label>
+            <button class="primary" type="submit">パスワードを変更</button>
+          </form>
+        </details>
+
+        <details class="danger-zone">
+          <summary>アカウントを削除</summary>
+          <form id="deleteForm" class="form-panel">
+            <p>アカウントを完全に削除します。この操作は取り消せません。</p>
+            <label>確認用パスワード
+              <input name="password" type="password" autocomplete="current-password" required>
+            </label>
+            <button class="danger" type="submit">アカウントを完全削除</button>
+          </form>
+        </details>
+      </div>
+
+      <button id="logoutButton" class="secondary" type="button">ログアウト</button>
+    </section>
+
+    <div id="message" class="message" role="alert" aria-live="polite"></div>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
