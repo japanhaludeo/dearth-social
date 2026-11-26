@@ -25,6 +25,9 @@ db.exec(`
 `);
 
 app.disable('x-powered-by');
+// Render and similar platforms terminate HTTPS at a reverse proxy. Trust it so
+// Express can correctly set secure session cookies for the original request.
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '16kb' }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
@@ -41,7 +44,7 @@ app.use(session({
   }
 }));
 
-// Simple in-memory protection for local/demo use. Use a real rate limiter in production.
+// Simple in-memory protection for local/demo use. Use a shared rate limiter in production.
 const requestLog = new Map();
 function rateLimit(req, res, next) {
   if (!req.path.startsWith('/api/')) return next();
@@ -60,11 +63,11 @@ app.use(rateLimit);
 function isSafeOrigin(req) {
   if (req.method === 'GET' || req.method === 'HEAD') return true;
   const origin = req.get('origin');
-  if (!origin) return true; // Allow direct API clients; browser mutations require CSRF token below.
+  if (!origin) return true;
   const host = req.get('host');
   try {
     const originUrl = new URL(origin);
-    return host === `${originUrl.host}`;
+    return host === originUrl.host;
   } catch {
     return false;
   }
@@ -83,19 +86,19 @@ app.use((req, res, next) => {
 
 function publicUser(row) {
   if (!row) return null;
-  return { id: row.id, accountId: row.account_id, accountName: row.account_name, createdAt: row.created_at };
+  return { id: row.id, accountId: row.account_id.toLowerCase(), accountName: row.account_name, createdAt: row.created_at };
 }
 
 function normalizeAccountId(value) {
-  return String(value || '').trim();
+  return String(value || '').trim().toLowerCase();
 }
 
 function validateRegistration(accountId, accountName, password) {
-  if (!/^[A-Za-z0-9_-]{3,30}$/.test(accountId)) {
-    return 'アカウントIDは英数字・_・-を使い、3～30文字で入力してください。';
+  if (!/^[a-z0-9_]{2,30}$/.test(accountId)) {
+    return 'アカウントIDは英数字・_を使い、2～30文字で入力してください。ハイフンは使えません。';
   }
   if (!accountName || accountName.length > 50) return 'アカウント名は1～50文字で入力してください。';
-  if (!password || password.length < 8 || password.length > 72) return 'パスワードは8～72文字で入力してください。';
+  if (password.length < 2 || password.length > 72) return 'パスワードは2～72文字で入力してください。';
   return null;
 }
 
@@ -120,7 +123,7 @@ app.post('/api/account/register', async (req, res) => {
   const error = validateRegistration(accountId, accountName, password);
   if (error) return res.status(400).json({ error });
 
-  const exists = db.prepare('SELECT 1 FROM users WHERE account_id = ?').get(accountId);
+  const exists = db.prepare('SELECT 1 FROM users WHERE LOWER(account_id) = ?').get(accountId);
   if (exists) return res.status(409).json({ error: 'このアカウントIDは既に使われています。' });
 
   const passwordHash = await bcrypt.hash(password, 12);
@@ -148,7 +151,7 @@ app.post('/api/account/register', async (req, res) => {
 app.post('/api/account/login', async (req, res) => {
   const accountId = normalizeAccountId(req.body.accountId);
   const password = String(req.body.password || '');
-  const user = db.prepare('SELECT * FROM users WHERE account_id = ?').get(accountId);
+  const user = db.prepare('SELECT * FROM users WHERE LOWER(account_id) = ? ORDER BY id LIMIT 1').get(accountId);
 
   const valid = user ? await bcrypt.compare(password, user.password_hash) : await bcrypt.compare(password, '$2b$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidi');
   if (!valid) return res.status(401).json({ error: 'アカウントIDまたはパスワードが正しくありません。' });
@@ -180,13 +183,12 @@ app.patch('/api/account/password', async (req, res) => {
     return res.status(401).json({ error: '現在のパスワードが正しくありません。' });
   }
   if (newPassword !== confirmedPassword) return res.status(400).json({ error: '新しいパスワードと確認用パスワードが一致しません。' });
-  if (newPassword.length < 8 || newPassword.length > 72) return res.status(400).json({ error: 'パスワードは8～72文字で入力してください。' });
+  if (newPassword.length < 2 || newPassword.length > 72) return res.status(400).json({ error: 'パスワードは2～72文字で入力してください。' });
   if (await bcrypt.compare(newPassword, user.password_hash)) return res.status(400).json({ error: '現在と異なるパスワードを入力してください。' });
 
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  db.prepare(`UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(passwordHash, user.id);
+  db.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(passwordHash, user.id);
 
-  // Password changes invalidate the old login session and require signing in again.
   req.session.destroy(err => {
     if (err) return res.status(500).json({ error: 'パスワードは変更されましたが、セッションの更新に失敗しました。' });
     res.clearCookie('dearthsocial.sid');
@@ -195,8 +197,17 @@ app.patch('/api/account/password', async (req, res) => {
 });
 
 app.delete('/api/account', async (req, res) => {
-  const user = getSessionUser(req);
-  if (!user) return res.status(401).json({ error: 'ログインが必要です。' });
+  // Normally the session identifies the account. If a hosted deployment lost its
+  // in-memory session, allow deletion only after re-authenticating with ID/password.
+  const submittedAccountId = normalizeAccountId(req.body.accountId);
+  let user = getSessionUser(req);
+  if (!user && submittedAccountId) {
+    user = db.prepare('SELECT * FROM users WHERE LOWER(account_id) = ? ORDER BY id LIMIT 1').get(submittedAccountId);
+  }
+  if (!user) return res.status(401).json({ error: 'ログイン情報を確認できません。再ログインするか、アカウントIDとパスワードを入力してください。' });
+  if (submittedAccountId && normalizeAccountId(user.account_id) !== submittedAccountId) {
+    return res.status(403).json({ error: 'ログイン中のアカウントと入力されたIDが一致しません。' });
+  }
 
   const password = String(req.body.password || '');
   if (!(await bcrypt.compare(password, user.password_hash))) {
@@ -219,7 +230,7 @@ process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`DearthSocial: http://localhost:${PORT}`));
+  app.listen(PORT, () => console.log(`DearthSocial listening on port ${PORT}`));
 }
 
 module.exports = app;

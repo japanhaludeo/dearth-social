@@ -26,11 +26,12 @@
           <input name="accountName" maxlength="50" autocomplete="nickname" required>
         </label>
         <label>アカウントID
-          <input name="accountId" maxlength="30" pattern="[A-Za-z0-9_-]{3,30}" autocomplete="username" required>
-          <small>英数字・_・-、3～30文字（重複不可）</small>
+          <input name="accountId" minlength="2" maxlength="30" pattern="[A-Za-z0-9_]{2,30}" autocomplete="username" required>
+          <small>英数字・_、2～30文字（重複不可）。大文字は小文字に変換されます。ハイフンは使えません。</small>
         </label>
         <label>パスワード
-          <input name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+          <input name="password" type="password" minlength="2" maxlength="72" autocomplete="new-password" required>
+          <small>2～72文字</small>
         </label>
         <button class="primary" type="submit">作成する</button>
       </form>
@@ -38,10 +39,10 @@
       <form id="loginForm" class="form-panel" hidden>
         <h2>ログイン</h2>
         <label>アカウントID
-          <input name="accountId" autocomplete="username" required>
+          <input name="accountId" minlength="2" maxlength="30" pattern="[A-Za-z0-9_]{2,30}" autocomplete="username" required>
         </label>
         <label>パスワード
-          <input name="password" type="password" autocomplete="current-password" required>
+          <input name="password" type="password" minlength="2" maxlength="72" autocomplete="current-password" required>
         </label>
         <button class="primary" type="submit">ログイン</button>
       </form>
@@ -62,13 +63,13 @@
           <summary>パスワードを変更</summary>
           <form id="passwordForm" class="form-panel">
             <label>現在のパスワード
-              <input name="currentPassword" type="password" autocomplete="current-password" required>
+              <input name="currentPassword" type="password" minlength="2" maxlength="72" autocomplete="current-password" required>
             </label>
             <label>新しいパスワード
-              <input name="newPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+              <input name="newPassword" type="password" minlength="2" maxlength="72" autocomplete="new-password" required>
             </label>
             <label>新しいパスワード（確認）
-              <input name="confirmPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+              <input name="confirmPassword" type="password" minlength="2" maxlength="72" autocomplete="new-password" required>
             </label>
             <button class="primary" type="submit">パスワードを変更</button>
           </form>
@@ -79,7 +80,7 @@
           <form id="deleteForm" class="form-panel">
             <p>アカウントを完全に削除します。この操作は取り消せません。</p>
             <label>確認用パスワード
-              <input name="password" type="password" autocomplete="current-password" required>
+              <input name="password" type="password" minlength="2" maxlength="72" autocomplete="current-password" required>
             </label>
             <button class="danger" type="submit">アカウントを完全削除</button>
           </form>
