@@ -22,6 +22,21 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS posts_created_at_idx ON posts(created_at DESC, id DESC);
+  CREATE TABLE IF NOT EXISTS replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS replies_post_id_idx ON replies(post_id, created_at, id);
 `);
 
 app.disable('x-powered-by');
@@ -102,9 +117,62 @@ function validateRegistration(accountId, accountName, password) {
   return null;
 }
 
+// Count ASCII and half-width katakana as one, all other grapheme clusters as two.
+// This keeps combining marks and joined emoji from being counted as extra characters.
+function weightedLength(text) {
+  const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
+  let length = 0;
+  for (const { segment } of segmenter.segment(text)) {
+    const codePoint = segment.codePointAt(0);
+    const isHalfWidth = codePoint <= 0x7f || (codePoint >= 0xff61 && codePoint <= 0xff9f);
+    length += isHalfWidth ? 1 : 2;
+  }
+  return length;
+}
+
+function validateText(text, maxLength, label) {
+  if (!text.trim()) return `${label}を入力してください。`;
+  if (weightedLength(text) > maxLength) return `${label}は全角2・半角1文字換算で${maxLength}文字以内にしてください。`;
+  return null;
+}
+
 function getSessionUser(req) {
   if (!req.session.userId) return null;
   return db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId) || null;
+}
+
+function requireUser(req, res) {
+  const user = getSessionUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'ログインが必要です。' });
+    return null;
+  }
+  return user;
+}
+
+function getFeed() {
+  const posts = db.prepare(`
+    SELECT p.id, p.user_id AS userId, p.body, p.created_at AS createdAt,
+           u.account_id AS accountId, u.account_name AS accountName
+    FROM posts p JOIN users u ON u.id = p.user_id
+    ORDER BY p.created_at DESC, p.id DESC
+    LIMIT 50
+  `).all();
+
+  const getReplies = db.prepare(`
+    SELECT r.id, r.user_id AS userId, r.body, r.created_at AS createdAt,
+           u.account_id AS accountId, u.account_name AS accountName
+    FROM replies r JOIN users u ON u.id = r.user_id
+    WHERE r.post_id = ?
+    ORDER BY r.created_at ASC, r.id ASC
+    LIMIT 100
+  `);
+
+  return posts.map(post => ({
+    ...post,
+    accountId: post.accountId.toLowerCase(),
+    replies: getReplies.all(post.id).map(reply => ({ ...reply, accountId: reply.accountId.toLowerCase() }))
+  }));
 }
 
 app.get('/api/csrf', (req, res) => {
@@ -114,6 +182,34 @@ app.get('/api/csrf', (req, res) => {
 
 app.get('/api/account', (req, res) => {
   res.json({ user: publicUser(getSessionUser(req)) });
+});
+
+app.get('/api/posts', (req, res) => {
+  res.json({ posts: getFeed() });
+});
+
+app.post('/api/posts', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const body = String(req.body.body || '');
+  const error = validateText(body, 256, '投稿');
+  if (error) return res.status(400).json({ error });
+  const result = db.prepare('INSERT INTO posts (user_id, body) VALUES (?, ?)').run(user.id, body);
+  res.status(201).json({ postId: Number(result.lastInsertRowid), posts: getFeed() });
+});
+
+app.post('/api/posts/:postId/replies', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const postId = Number(req.params.postId);
+  if (!Number.isSafeInteger(postId) || postId < 1 || !db.prepare('SELECT 1 FROM posts WHERE id = ?').get(postId)) {
+    return res.status(404).json({ error: '投稿が見つかりません。' });
+  }
+  const body = String(req.body.body || '');
+  const error = validateText(body, 64, '返信');
+  if (error) return res.status(400).json({ error });
+  db.prepare('INSERT INTO replies (post_id, user_id, body) VALUES (?, ?, ?)').run(postId, user.id, body);
+  res.status(201).json({ posts: getFeed() });
 });
 
 app.post('/api/account/register', async (req, res) => {
@@ -197,8 +293,6 @@ app.patch('/api/account/password', async (req, res) => {
 });
 
 app.delete('/api/account', async (req, res) => {
-  // Normally the session identifies the account. If a hosted deployment lost its
-  // in-memory session, allow deletion only after re-authenticating with ID/password.
   const submittedAccountId = normalizeAccountId(req.body.accountId);
   let user = getSessionUser(req);
   if (!user && submittedAccountId) {
@@ -214,6 +308,7 @@ app.delete('/api/account', async (req, res) => {
     return res.status(401).json({ error: 'パスワードが正しくありません。' });
   }
 
+  // Foreign-key cascades permanently remove the account's posts and replies too.
   db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
   req.session.destroy(err => {
     if (err) return res.status(500).json({ error: 'アカウントは削除しましたが、セッションの削除に失敗しました。' });

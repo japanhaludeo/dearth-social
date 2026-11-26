@@ -78,7 +78,7 @@
         <details class="danger-zone">
           <summary>アカウントを削除</summary>
           <form id="deleteForm" class="form-panel">
-            <p>アカウントを完全に削除します。この操作は取り消せません。</p>
+            <p>アカウントと、そのアカウントの投稿・返信を完全に削除します。この操作は取り消せません。</p>
             <label>確認用パスワード
               <input name="password" type="password" minlength="2" maxlength="72" autocomplete="current-password" required>
             </label>
@@ -88,6 +88,21 @@
       </div>
 
       <button id="logoutButton" class="secondary" type="button">ログアウト</button>
+    </section>
+
+    <section id="socialView" class="social-view" hidden aria-label="投稿と返信">
+      <section class="card composer-card">
+        <h2>いまどうしてる？</h2>
+        <form id="postForm" class="composer">
+          <label class="visually-hidden" for="postBody">投稿内容</label>
+          <textarea id="postBody" name="body" maxlength="256" rows="4" placeholder="投稿を書く（全角2・半角1換算で256文字まで）" required></textarea>
+          <div class="composer-footer">
+            <span id="postCounter" class="counter">0 / 256</span>
+            <button class="primary" type="submit">投稿</button>
+          </div>
+        </form>
+      </section>
+      <section id="feed" class="feed" aria-live="polite" aria-label="タイムライン"></section>
     </section>
 
     <div id="message" class="message" role="alert" aria-live="polite"></div>
